@@ -8,6 +8,7 @@ Guardar um histórico **persistente e sincronizado em GitHub** de todas as atra�
 
 ## 📋 O que foi implementado
 
+
 ### 1. ✅ Sistema de Histórico em JSON
 **Ficheiro:** `visited_attractions.json`
 - Guarda automaticamente atrações visitadas
