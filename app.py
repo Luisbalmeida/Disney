@@ -10,13 +10,26 @@ from groq import Groq
 st.set_page_config(page_title="Disney AI Guide", page_icon="🏰", layout="wide")
 st.title("🏰 Guia IA - Disneyland Paris")
 
-# 2. Obter Chave API de forma segura
+# 2. Obter Chaves API de forma segura
 try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-    groq_client = Groq(api_key=GROQ_API_KEY)
-except:
-    st.error("⚠️ Chave GROQ_API_KEY não configurada nos Secrets do Streamlit.")
-    st.stop()
+    GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
+    OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+    
+    groq_client = None
+    if GROQ_API_KEY:
+        groq_client = Groq(api_key=GROQ_API_KEY)
+    
+    openai_client = None
+    if OPENAI_API_KEY:
+        try:
+            from openai import OpenAI
+            openai_client = OpenAI(api_key=OPENAI_API_KEY)
+        except:
+            openai_client = None
+    
+except Exception as e:
+    st.warning(f"⚠️ Erro ao configurar IAs: {e}")
+    st.info("Configure GROQ_API_KEY e/ou OPENAI_API_KEY nos Secrets do Streamlit para usar IA.")
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
@@ -75,6 +88,35 @@ def obter_zona_atracao(nome_atracao):
                 return zona
     return "Desconhecida"
 
+def gerar_recomendacao_ia(prompt, ia_selecionada):
+    """Gera recomendação usando a IA selecionada"""
+    try:
+        if ia_selecionada == "Groq":
+            if not groq_client:
+                return None, "❌ Groq não configurado. Adicione GROQ_API_KEY nos Secrets."
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama-3.3-70b-versatile", 
+                temperature=0.4
+            )
+            return response.choices[0].message.content, None
+        
+        elif ia_selecionada == "OpenAI":
+            if not openai_client:
+                return None, "❌ OpenAI não configurado. Adicione OPENAI_API_KEY nos Secrets."
+            response = openai_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="gpt-3.5-turbo",
+                temperature=0.4
+            )
+            return response.choices[0].message.content, None
+        
+        elif ia_selecionada == "Manual":
+            return "📝 Ver tabela de atrações na aba 'Histórico' (restantes) para escolher manualmente", None
+    
+    except Exception as e:
+        return None, f"❌ Erro ao contactar {ia_selecionada}: {str(e)}"
+
 with st.spinner("A carregar tempos de espera reais da Disney..."):
     df_attractions = buscar_tempos_espera()
 
@@ -94,10 +136,22 @@ with tab1:
         nomes_atracoes = sorted(df_attractions['Nome'].unique())
         visitadas = st.multiselect("Seleciona as atrações:", nomes_atracoes)
 
-        # Botão principal
-        submit_button = st.form_submit_button("✨ Pedir Sugestão Mágica ✨")
+        st.subheader("🤖 Qual IA usar?")
+        opcoes_ia = ["Groq (Recomendado)", "OpenAI", "Manual (Ver tabela)"]
+        ia_selecionada = st.selectbox("Escolhe a IA:", opcoes_ia)
+        
+        # Mapear opção para nome real
+        ia_map = {
+            "Groq (Recomendado)": "Groq",
+            "OpenAI": "OpenAI",
+            "Manual (Ver tabela)": "Manual"
+        }
+        ia_nome = ia_map[ia_selecionada]
 
-    # 7. Processamento e Ligação ao Groq
+        # Botão principal
+        submit_button = st.form_submit_button("✨ Pedir Sugestão ✨")
+
+    # 7. Processamento e Ligação à IA
     if submit_button:
         # Guardar visita no histórico
         for atracao in visitadas:
@@ -151,20 +205,54 @@ with tab1:
         """
 
         st.divider()
-        with st.spinner("A consultar o Groq (LLaMA 3.3) para calcular a tua rota..."):
-            try:
-                response_groq = groq_client.chat.completions.create(
-                    messages=[{"role": "user", "content": prompt}],
-                    model="llama-3.3-70b-versatile", 
-                    temperature=0.4
-                )
-                st.success("Tudo pronto! Aqui está o teu plano:")
-                st.markdown(response_groq.choices[0].message.content)
-            except Exception as e:
-                st.error(f"Erro ao contactar o Groq: {e}")
+        
+        if ia_nome == "Manual":
+            st.info("📝 **Modo Manual:** Ver tabela de atrações que faltam visitar na aba '📊 Histórico'")
+        else:
+            with st.spinner(f"A consultar {ia_nome} para calcular a tua rota..."):
+                resposta, erro = gerar_recomendacao_ia(prompt, ia_nome)
+                if erro:
+                    st.error(erro)
+                else:
+                    st.success(f"✨ Recomendação de {ia_nome}:")
+                    st.markdown(resposta)
 
 with tab2:
-    st.subheader("📊 Histórico de Atrações Visitadas")
+    st.subheader("📊 Histórico e Tempos de Espera")
+    
+    # Separar visitadas e não visitadas
+    visitadas_nomes = set(historico.get("visitadas", {}).keys())
+    nao_visitadas_df = df_attractions[~df_attractions['Nome'].isin(visitadas_nomes)].copy()
+    
+    # Section 1: Atrações NÃO visitadas (NOVO)
+    st.markdown("### 🎢 Atrações que Faltam Visitar")
+    
+    if len(nao_visitadas_df) > 0:
+        # Adicionar zona a cada atração não visitada
+        nao_visitadas_df['Zona'] = nao_visitadas_df['Nome'].apply(obter_zona_atracao)
+        
+        # Filtro por zona
+        zonas_nao_visitadas = ['Todas'] + sorted(nao_visitadas_df['Zona'].unique().tolist())
+        zona_filtro = st.selectbox("Filtrar por zona:", zonas_nao_visitadas, key="zona_nao_visitadas")
+        
+        if zona_filtro == "Todas":
+            df_nao_visitadas_filtro = nao_visitadas_df
+        else:
+            df_nao_visitadas_filtro = nao_visitadas_df[nao_visitadas_df['Zona'] == zona_filtro]
+        
+        # Reordenar colunas
+        df_nao_visitadas_display = df_nao_visitadas_filtro[['Nome', 'Zona', 'Espera (min)']].sort_values('Espera (min)')
+        
+        st.dataframe(df_nao_visitadas_display, use_container_width=True, hide_index=True)
+        
+        st.metric("Atrações para visitar", len(df_nao_visitadas_filtro))
+    else:
+        st.success("🎉 Parabéns! Visitaste todas as atrações!")
+    
+    st.divider()
+    
+    # Section 2: Atrações já visitadas
+    st.markdown("### ✅ Atrações Já Visitadas")
     
     if historico["visitadas"]:
         # Construir DataFrame do histórico
@@ -181,7 +269,7 @@ with tab2:
         
         # Tabela de atrações visitadas na zona
         if historico["zona"]:
-            st.info(f"📍 Zona atual: **{historico['zona']}**")
+            st.info(f"📍 Sua zona atual: **{historico['zona']}**")
             df_zona = df_historico[df_historico["Zona"] == historico["zona"]]
             
             if len(df_zona) > 0:
@@ -197,7 +285,7 @@ with tab2:
         # Estatísticas
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total de Atrações", len(historico["visitadas"]))
+            st.metric("Total Visitadas", len(historico["visitadas"]))
         with col2:
             tempo_medio = df_historico["Tempo de Espera (min)"].mean()
             st.metric("Tempo Médio de Espera", f"{tempo_medio:.0f} min")
@@ -208,7 +296,7 @@ with tab2:
         # Botão para exportar/limpar
         col1, col2, col3 = st.columns(3)
         with col1:
-            if st.button("📥 Exportar como CSV"):
+            if st.button("📥 Exportar Histórico como CSV"):
                 csv = df_historico.to_csv(index=False)
                 st.download_button(
                     label="Descarregar CSV",
@@ -217,6 +305,15 @@ with tab2:
                     mime="text/csv"
                 )
         with col2:
+            if st.button("📤 Exportar Restantes como CSV"):
+                csv = df_nao_visitadas_display.to_csv(index=False)
+                st.download_button(
+                    label="Descarregar CSV",
+                    data=csv,
+                    file_name=f"disney_remaining_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+        with col3:
             if st.button("🔄 Limpar Histórico"):
                 historico["visitadas"] = {}
                 guardar_historico(historico)
@@ -228,24 +325,52 @@ with tab2:
 with tab3:
     st.subheader("❓ Como funciona?")
     st.markdown("""
-    ### 📱 Funcionalidades:
+    ### 📱 Funcionalidades Principais:
     
-    1. **🎯 Recomendações** - Recebe sugestões de IA sobre qual é a próxima melhor atração para visitar
-    2. **📊 Histórico** - Vê todas as atrações que já visitaste e os tempos de espera
-    3. **☁️ Sincronização** - Os dados ficam guardados no ficheiro `visited_attractions.json`
+    1. **🎯 Recomendações** 
+       - Recebe sugestões de IA sobre qual é a próxima melhor atração
+       - Escolhe entre: **Groq**, **OpenAI**, ou **Manual**
+       - Baseado na tua localização e histórico
     
-    ### 💾 Guardar no GitHub:
-    - Os teus dados ficam em `visited_attractions.json` 
-    - Para fazer backup no GitHub, faz um commit simples:
+    2. **📊 Histórico e Tempos de Espera**
+       - Vê todas as atrações que já visitaste
+       - **Vê todas as atrações que FALTAM visitar** com os tempos de espera
+       - Filtro por zona
+       - Exportar em CSV
+    
+    3. **☁️ Sincronização**
+       - Os dados ficam guardados em `visited_attractions.json`
+       - Backup automático no GitHub
+    
+    ### 🤖 Escolher IA:
+    
+    **Groq (Recomendado - Grátis)**
+    - Mais rápido
+    - Free tier generoso
+    - Va a https://console.groq.com
+    
+    **OpenAI**
+    - Mais preciso
+    - Requer créditos
+    - Va a https://platform.openai.com
+    
+    **Manual**
+    - Ver tabela de atrações restantes
+    - Escolher tu próprio
+    - Sem necessidade de API
+    
+    ### 💾 Guardar Dados:
+    - Os dados ficam em `visited_attractions.json` (local)
+    - Sincronizar com GitHub:
       ```bash
       git add visited_attractions.json
-      git commit -m "Atualizar histórico de atrações visitadas"
+      git commit -m "Atualizar histórico"
       git push origin main
       ```
     
     ### 📊 Dados Guardados:
     - Nome da atração
-    - Zona onde ficava
+    - Zona onde fica
     - Tempo de espera quando visitaste
     - Data da visita
     
