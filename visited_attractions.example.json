@@ -1,0 +1,21 @@
+{
+  "zona": "Fantasyland",
+  "visitadas": {
+    "It's a Small World": {
+      "zona": "Fantasyland",
+      "data": "2026-03-29T15:30:45.123456",
+      "tempo_espera": 35
+    },
+    "Cinderella Castle Walkthrough": {
+      "zona": "Fantasyland",
+      "data": "2026-03-29T14:15:22.654321",
+      "tempo_espera": 0
+    },
+    "Peter Pan's Flight": {
+      "zona": "Fantasyland",
+      "data": "2026-03-29T13:45:10.111111",
+      "tempo_espera": 45
+    }
+  },
+  "ultima_atualizacao": "2026-03-29T15:30:45.123456"
+}
