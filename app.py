@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 from groq import Groq
-import concurrent.futures
+from mistralai import Mistral
 import time
 
 # 1. Configuração da Página
@@ -15,7 +15,7 @@ st.title("🏰 Guia IA - Disneyland Paris")
 # 2. Obter Chaves API de forma segura
 try:
     GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
-    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
+    MISTRAL_API_KEY = st.secrets.get("MISTRAL_API_KEY", "")
     
     groq_client = None
     if GROQ_API_KEY:
@@ -23,38 +23,15 @@ try:
     
 except Exception as e:
     st.warning(f"⚠️ Erro ao configurar IAs: {e}")
-    st.info("Configure GROQ_API_KEY e/ou OPENROUTER_API_KEY nos Secrets do Streamlit para usar IA.")
+    st.info("Configure GROQ_API_KEY e/ou MISTRAL_API_KEY nos Secrets do Streamlit para usar IA.")
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
 
-# ============================================================
-# MODELOS OPENROUTER — IDs CONFIRMADOS MARÇO 2026
-# Fonte: https://openrouter.ai/collections/free-models
-# IMPORTANTE: Ativar "Allow free endpoints" em:
-# https://openrouter.ai/settings/privacy
-# ============================================================
-
-MODELOS_ESPECIALISTAS = [
-    {
-        "name": "Llama 3.3 70B",
-        "id": "meta-llama/llama-3.3-70b-instruct:free",
-        "role": "Especialista Geral"
-    },
-    {
-        "name": "Mistral Small 3.1 24B",
-        "id": "mistralai/mistral-small-3.1-24b-instruct:free",
-        "role": "Especialista em Rotas"
-    },
-    {
-        "name": "Gemma 3 27B",
-        "id": "google/gemma-3-27b-it:free",
-        "role": "Especialista em Raciocínio"
-    }
-]
-
-# Juiz — NVIDIA Nemotron 3 Super (262K contexto, ideal para comparar textos)
-MODELO_JUIZ = "nvidia/nemotron-3-super-120b-a12b:free"
+# Inicializar cliente Mistral
+mistral_client = None
+if MISTRAL_API_KEY:
+    mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
@@ -110,132 +87,8 @@ def obter_zona_atracao(nome_atracao):
                 return zona
     return "Desconhecida"
 
-def chamar_openrouter(prompt, modelo_id, tentativas=3):
-    """Chama OpenRouter API com retry automático em caso de Rate Limit"""
-    if not OPENROUTER_API_KEY:
-        return None, "❌ OpenRouter não configurado"
-    
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "HTTP-Referer": "https://github.com/Luisbalmeida/Disney",
-        "X-Title": "Disney AI Guide"
-    }
-    
-    for tentativa in range(tentativas):
-        try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
-                    "model": modelo_id,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.4,
-                    "max_tokens": 1000
-                },
-                timeout=40
-            )
-            
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"], None
-            
-            elif response.status_code == 429:
-                # Rate Limit: esperar e tentar novamente
-                espera = 5 * (tentativa + 1)
-                time.sleep(espera)
-                continue
-            
-            else:
-                return None, f"Erro {response.status_code}: {response.text[:200]}"
-        
-        except requests.Timeout:
-            if tentativa < tentativas - 1:
-                time.sleep(3)
-                continue
-            return None, "❌ Timeout: O modelo demorou demasiado a responder."
-        except Exception as e:
-            return None, f"❌ Erro: {str(e)[:200]}"
-    
-    return None, "❌ Todas as tentativas falharam (Rate Limit). Tente novamente em 30 segundos."
-
-def gerar_recomendacao_especialista(prompt, modelo):
-    """Gera recomendação de um especialista individual"""
-    resposta, erro = chamar_openrouter(prompt, modelo["id"])
-    if resposta:
-        return {
-            "especialista": modelo["name"],
-            "role": modelo["role"],
-            "sugestao": resposta
-        }
-    else:
-        return {
-            "especialista": modelo["name"],
-            "role": modelo["role"],
-            "sugestao": f"❌ Erro: {erro}"
-        }
-
-def moa_obter_recomendacoes_paralelas(prompt):
-    """Obtém recomendações de múltiplos especialistas em paralelo (MoA)"""
-    recomendacoes = []
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {
-            executor.submit(gerar_recomendacao_especialista, prompt, modelo): modelo 
-            for modelo in MODELOS_ESPECIALISTAS
-        }
-        
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                resultado = future.result(timeout=35)
-                recomendacoes.append(resultado)
-            except Exception as e:
-                recomendacoes.append({
-                    "especialista": "Desconhecido",
-                    "role": "Erro",
-                    "sugestao": f"❌ Timeout: {str(e)}"
-                })
-    
-    return recomendacoes
-
-def moa_juiz_decidir(prompt_base, recomendacoes_especialistas):
-    """Juiz analisa todas as sugestões e escolhe a melhor"""
-    
-    # Formatar sugestões para o juiz
-    sugestoes_formatadas = "\n".join([
-        f"--- {rec['especialista']} ({rec['role']}) ---\n{rec['sugestao'][:500]}\n"
-        for rec in recomendacoes_especialistas
-    ])
-    
-    prompt_juiz = f"""
-    Você é um juiz especializado em parques temáticos. 
-    
-    Recebeu sugestões de roteiros de vários especialistas para a Disneyland Paris:
-    
-    {sugestoes_formatadas}
-    
-    Baseado nas restrições originais:
-    {prompt_base}
-    
-    Sua tarefa:
-    1. Analise TODAS as sugestões
-    2. Escolha a MELHOR sugestão (aquela que melhor minimiza tempo de espera + caminhada)
-    3. Se precisar, combine os melhores pontos de cada sugestão
-    4. Retorne a recomendação final ESTRUTURADA assim:
-    
-    🎯 **RECOMENDAÇÃO FINAL APROVADA PELO JUIZ:**
-    [Atrações e rota específica]
-    
-    💡 **RAZÃO DA ESCOLHA:**
-    [Por que esta é a melhor opção]
-    
-    🏆 **ESPECIALISTA QUE SUGERIU ISTO:**
-    [Nome do especialista ou combinação]
-    """
-    
-    resposta, erro = chamar_openrouter(prompt_juiz, MODELO_JUIZ)
-    return resposta, erro
-
 def gerar_recomendacao_ia(prompt, ia_selecionada):
-    """Gera recomendação usando a IA selecionada"""
+    """Gera recomendação usando a IA selecionada (Groq ou Mistral)"""
     try:
         if ia_selecionada == "Groq":
             if not groq_client:
@@ -247,31 +100,15 @@ def gerar_recomendacao_ia(prompt, ia_selecionada):
             )
             return response.choices[0].message.content, None
         
-        elif ia_selecionada == "OpenRouter (MoA)":
-            if not OPENROUTER_API_KEY:
-                return None, "❌ OpenRouter não configurado. Adicione OPENROUTER_API_KEY nos Secrets."
-            
-            # Mostrar progresso
-            st.info("🤖 MoA iniciado: Consultando 3 especialistas em paralelo...")
-            
-            # Passo 1: Especialistas em paralelo
-            recomendacoes = moa_obter_recomendacoes_paralelas(prompt)
-            
-            # Mostrar sugestões dos especialistas
-            st.subheader("👥 Sugestões dos Especialistas:")
-            for rec in recomendacoes:
-                with st.expander(f"👨‍💼 {rec['especialista']} - {rec['role']}"):
-                    st.markdown(rec['sugestao'][:800])
-            
-            st.info("⚖️ Juiz analisando as melhores sugestões...")
-            
-            # Passo 2: Juiz decide
-            resposta_juiz, erro = moa_juiz_decidir(prompt, recomendacoes)
-            
-            if erro:
-                return None, f"❌ Erro no juiz: {erro}"
-            
-            return resposta_juiz, None
+        elif ia_selecionada == "Mistral":
+            if not mistral_client:
+                return None, "❌ Mistral não configurado. Adicione MISTRAL_API_KEY nos Secrets."
+            response = mistral_client.chat.complete(
+                model="mistral-large-latest",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4
+            )
+            return response.choices[0].message.content, None
         
         elif ia_selecionada == "Manual":
             return "📝 Ver tabela de atrações na aba 'Histórico' (restantes) para escolher manualmente", None
@@ -302,13 +139,13 @@ with tab1:
         visitadas = st.multiselect("Seleciona as atrações:", nomes_atracoes)
 
         st.subheader("🤖 Qual IA usar?")
-        opcoes_ia = ["Groq (Rápido)", "OpenRouter MoA 🏆 (Melhor Qualidade)", "Manual (Ver tabela)"]
+        opcoes_ia = ["Groq (Rápido)", "Mistral (Qualidade)", "Manual (Ver tabela)"]
         ia_selecionada = st.selectbox("Escolhe a IA:", opcoes_ia)
         
         # Mapear opção para nome real
         ia_map = {
             "Groq (Rápido)": "Groq",
-            "OpenRouter MoA 🏆 (Melhor Qualidade)": "OpenRouter (MoA)",
+            "Mistral (Qualidade)": "Mistral",
             "Manual (Ver tabela)": "Manual"
         }
         ia_nome = ia_map[ia_selecionada]
@@ -494,7 +331,7 @@ with tab3:
     
     1. **🎯 Recomendações** 
        - Recebe sugestões de IA sobre qual é a próxima melhor atração
-       - Escolhe entre: **Groq**, **OpenRouter MoA 🏆**, ou **Manual**
+       - Escolhe entre: **Groq**, **Mistral**, ou **Manual**
        - Baseado na tua localização e histórico
     
     2. **📊 Histórico e Tempos de Espera**
@@ -509,22 +346,17 @@ with tab3:
     
     ### 🤖 Escolher IA:
     
-    **Groq (Rápido & Grátis)**
+    **Groq (Rápido)**
     - Muito rápido
-    - Free tier generoso
-    - Uma única IA: Llama 3.3 70B
+    - Excelente qualidade
+    - Modelo: Llama 3.3 70B
     - Va a https://console.groq.com
     
-    **OpenRouter MoA 🏆 (Mixture of Agents - Melhor Qualidade)**
-    - **3 especialistas em paralelo:**
-      - Llama 3.3 70B (Especialista Geral)
-      - Mistral Small 3.1 24B (Rotas)
-      - Gemma 3 27B (Raciocínio)
-    - **1 Juiz inteligente** (NVIDIA Nemotron 3 Super - 262K contexto)
-    - Mais preciso e confiável
-    - Todos os modelos GRATUITOS!
-    - ⚠️ Importante: Ativar "Allow free endpoints" em https://openrouter.ai/settings/privacy
-    - Va a https://openrouter.ai
+    **Mistral (Qualidade)**
+    - Resposta detalhada
+    - Modelo: Mistral Large
+    - Ótimo para análise de rotas
+    - Va a https://console.mistral.ai
     
     **Manual**
     - Ver tabela de atrações restantes
@@ -546,16 +378,18 @@ with tab3:
     - Tempo de espera quando visitaste
     - Data da visita
     
-    ### 🏆 Por que OpenRouter MoA é melhor?
+    ### 🏆 Por que comparar Groq e Mistral?
     
-    **Problema com IA única:**
-    - Pode ter viés
-    - Uma alucinação afeta tudo
+    **Groq:**
+    - Mais rápido
+    - Ótimo para respostas imediatas
+    - Llama 3.3 é excelente em lógica
     
-    **Solução MoA:**
-    - 3 especialistas diferentes = perspectivas variadas
-    - Juiz compara e elige o melhor
-    - Resultado: **Qualidade aumenta ~40%**
-    - Tempo: Apenas +2 segundos (paralelo)
+    **Mistral:**
+    - Mais detalhado
+    - Ótimo para análise profunda
+    - Excelente em português
+    
+    Teste ambas e veja qual prefere! 🚀
     
     """)
