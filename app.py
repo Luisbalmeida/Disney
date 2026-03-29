@@ -59,6 +59,57 @@ MODELO_JUIZ = "nvidia/nemotron-3-super-120b-a12b:free"
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
 
+def carregar_historico():
+    """Carrega o histórico de atrações visitadas do ficheiro JSON"""
+    if os.path.exists(VISITED_FILE):
+        try:
+            with open(VISITED_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {"zona": "", "visitadas": {}, "ultima_atualizacao": ""}
+    return {"zona": "", "visitadas": {}, "ultima_atualizacao": ""}
+
+def guardar_historico(historico):
+    """Guarda o histórico de atrações visitadas em JSON"""
+    historico["ultima_atualizacao"] = datetime.now().isoformat()
+    with open(VISITED_FILE, 'w', encoding='utf-8') as f:
+        json.dump(historico, f, ensure_ascii=False, indent=2)
+
+# 4. Buscar Dados (Usa cache de 2 minutos para não bloquear a API da Disney)
+@st.cache_data(ttl=120)
+def buscar_tempos_espera():
+    API_URL = "https://api.themeparks.wiki/v1/entity/dae968d5-630d-4719-8b06-3d107e944401/live"
+    response = requests.get(API_URL)
+    data = response.json()
+    
+    attractions = []
+    for item in data.get("liveData", []):
+        if item.get("entityType") == "ATTRACTION" and item.get("status") == "OPERATING":
+            wait_time = item.get("queue", {}).get("STANDBY", {}).get("waitTime")
+            if wait_time is not None:
+                attractions.append({
+                    "Nome": item.get("name"),
+                    "Espera (min)": wait_time
+                })
+    return pd.DataFrame(attractions).sort_values(by="Espera (min)")
+
+# Mapeamento de atrações para zonas
+ZONA_POR_ATRACAO = {
+    "Frontierland": ["Big Thunder Mountain", "Phantom Manor", "Lucky Luke Saloon", "Tom Sawyer Island Rafts"],
+    "Fantasyland": ["Cinderella Castle", "It's a Small World", "Sleeping Beauty Castle Walkthrough", "Pinocchio's Fantastic Journey", "Snow White and the Seven Dwarfs", "Peter Pan's Flight", "Dumbo the Flying Elephant", "The Mad Teacups", "Alice's Curious Labyrinth"],
+    "Adventureland": ["Jungle Cruise", "Adventure Isle", "Aladdin's Enchanted Carpet", "The Magic Carpets of Aladdin", "Pirates of the Caribbean"],
+    "Discoveryland": ["Space Mountain", "Star Tours", "Buzz Lightyear of the Galaxy", "Autopia"],
+    "Main Street, U.S.A.": ["Disneyland Railroad", "The Walt Disney Studios Park Railroad"]
+}
+
+def obter_zona_atracao(nome_atracao):
+    """Retorna a zona de uma atração"""
+    for zona, atracoes in ZONA_POR_ATRACAO.items():
+        for atracao in atracoes:
+            if atracao.lower() in nome_atracao.lower():
+                return zona
+    return "Desconhecida"
+
 def chamar_openrouter(prompt, modelo_id, tentativas=3):
     """Chama OpenRouter API com retry automático em caso de Rate Limit"""
     if not OPENROUTER_API_KEY:
