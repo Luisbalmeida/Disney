@@ -28,81 +28,36 @@ except Exception as e:
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
 
-# IDs CORRIGIDOS — Março 2026 (todos confirmados ativos no OpenRouter)
+# ============================================================
+# MODELOS OPENROUTER — IDs CONFIRMADOS MARÇO 2026
+# Fonte: https://openrouter.ai/collections/free-models
+# IMPORTANTE: Ativar "Allow free endpoints" em:
+# https://openrouter.ai/settings/privacy
+# ============================================================
+
 MODELOS_ESPECIALISTAS = [
     {
         "name": "Llama 3.3 70B",
         "id": "meta-llama/llama-3.3-70b-instruct:free",
-        "role": "Especialista em Lógica e Português"
+        "role": "Especialista Geral"
     },
     {
-        "name": "NVIDIA Nemotron 3 Super",
-        "id": "nvidia/nemotron-3-super-120b-a12b:free",
-        "role": "Especialista em Planeamento e Rotas"
+        "name": "Mistral Small 3.1 24B",
+        "id": "mistralai/mistral-small-3.1-24b-instruct:free",
+        "role": "Especialista em Rotas"
     },
     {
-        "name": "DeepSeek R1",
-        "id": "deepseek/deepseek-r1:free",
-        "role": "Especialista em Raciocínio e Tempo"
+        "name": "Gemma 3 27B",
+        "id": "google/gemma-3-27b-it:free",
+        "role": "Especialista em Raciocínio"
     }
 ]
 
-# Juiz — DeepSeek V3 (fiável, rápido, grátis)
-MODELO_JUIZ = "deepseek/deepseek-chat-v3-0324:free"
+# Juiz — NVIDIA Nemotron 3 Super (262K contexto, ideal para comparar textos)
+MODELO_JUIZ = "nvidia/nemotron-3-super-120b-a12b:free"
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
-
-def carregar_historico():
-    """Carrega o histórico de atrações visitadas do ficheiro JSON"""
-    if os.path.exists(VISITED_FILE):
-        try:
-            with open(VISITED_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            return {"zona": "", "visitadas": {}, "ultima_atualizacao": ""}
-    return {"zona": "", "visitadas": {}, "ultima_atualizacao": ""}
-
-def guardar_historico(historico):
-    """Guarda o histórico de atrações visitadas em JSON"""
-    historico["ultima_atualizacao"] = datetime.now().isoformat()
-    with open(VISITED_FILE, 'w', encoding='utf-8') as f:
-        json.dump(historico, f, ensure_ascii=False, indent=2)
-
-# 4. Buscar Dados (Usa cache de 2 minutos para não bloquear a API da Disney)
-@st.cache_data(ttl=120)
-def buscar_tempos_espera():
-    API_URL = "https://api.themeparks.wiki/v1/entity/dae968d5-630d-4719-8b06-3d107e944401/live"
-    response = requests.get(API_URL)
-    data = response.json()
-    
-    attractions = []
-    for item in data.get("liveData", []):
-        if item.get("entityType") == "ATTRACTION" and item.get("status") == "OPERATING":
-            wait_time = item.get("queue", {}).get("STANDBY", {}).get("waitTime")
-            if wait_time is not None:
-                attractions.append({
-                    "Nome": item.get("name"),
-                    "Espera (min)": wait_time
-                })
-    return pd.DataFrame(attractions).sort_values(by="Espera (min)")
-
-# Mapeamento de atrações para zonas
-ZONA_POR_ATRACAO = {
-    "Frontierland": ["Big Thunder Mountain", "Phantom Manor", "Lucky Luke Saloon", "Tom Sawyer Island Rafts"],
-    "Fantasyland": ["Cinderella Castle", "It's a Small World", "Sleeping Beauty Castle Walkthrough", "Pinocchio's Fantastic Journey", "Snow White and the Seven Dwarfs", "Peter Pan's Flight", "Dumbo the Flying Elephant", "The Mad Teacups", "Alice's Curious Labyrinth"],
-    "Adventureland": ["Jungle Cruise", "Adventure Isle", "Aladdin's Enchanted Carpet", "The Magic Carpets of Aladdin", "Pirates of the Caribbean"],
-    "Discoveryland": ["Space Mountain", "Star Tours", "Buzz Lightyear of the Galaxy", "Autopia"],
-    "Main Street, U.S.A.": ["Disneyland Railroad", "The Walt Disney Studios Park Railroad"]
-}
-
-def obter_zona_atracao(nome_atracao):
-    """Retorna a zona de uma atração"""
-    for zona, atracoes in ZONA_POR_ATRACAO.items():
-        for atracao in atracoes:
-            if atracao.lower() in nome_atracao.lower():
-                return zona
-    return "Desconhecida"
 
 def chamar_openrouter(prompt, modelo_id, tentativas=3):
     """Chama OpenRouter API com retry automático em caso de Rate Limit"""
@@ -511,12 +466,13 @@ with tab3:
     
     **OpenRouter MoA 🏆 (Mixture of Agents - Melhor Qualidade)**
     - **3 especialistas em paralelo:**
-      - Llama 3.3 70B (Lógica e Português)
-      - NVIDIA Nemotron 3 Super (Planeamento e Rotas)
-      - DeepSeek R1 (Raciocínio e Tempo)
-    - **1 Juiz inteligente** (DeepSeek V3) que escolhe a melhor
+      - Llama 3.3 70B (Especialista Geral)
+      - Mistral Small 3.1 24B (Rotas)
+      - Gemma 3 27B (Raciocínio)
+    - **1 Juiz inteligente** (NVIDIA Nemotron 3 Super - 262K contexto)
     - Mais preciso e confiável
     - Todos os modelos GRATUITOS!
+    - ⚠️ Importante: Ativar "Allow free endpoints" em https://openrouter.ai/settings/privacy
     - Va a https://openrouter.ai
     
     **Manual**
