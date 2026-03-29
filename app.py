@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 from groq import Groq
-from mistralai import Mistral
+from mistralai import Mistral as MistralClient
 import time
 
 # 1. Configuração da Página
@@ -31,7 +31,7 @@ VISITED_FILE = "visited_attractions.json"
 # Inicializar cliente Mistral
 mistral_client = None
 if MISTRAL_API_KEY:
-    mistral_client = Mistral(api_key=MISTRAL_API_KEY)
+    mistral_client = MistralClient(api_key=MISTRAL_API_KEY)
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
