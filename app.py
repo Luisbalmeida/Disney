@@ -28,7 +28,7 @@ except Exception as e:
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
 
-# Modelos OpenRouter — ACTUALIZADO MARÇO 2026
+# IDs CORRIGIDOS — Março 2026 (todos confirmados ativos no OpenRouter)
 MODELOS_ESPECIALISTAS = [
     {
         "name": "Llama 3.3 70B",
@@ -37,18 +37,18 @@ MODELOS_ESPECIALISTAS = [
     },
     {
         "name": "NVIDIA Nemotron 3 Super",
-        "id": "nvidia/nemotron-3-super:free",
+        "id": "nvidia/nemotron-3-super-120b-a12b:free",
         "role": "Especialista em Planeamento e Rotas"
     },
     {
-        "name": "Qwen3 Next 80B",
-        "id": "qwen/qwen3-next-80b-a3b-instruct:free",
+        "name": "DeepSeek R1",
+        "id": "deepseek/deepseek-r1:free",
         "role": "Especialista em Raciocínio e Tempo"
     }
 ]
 
-# O Juiz — GPT-OSS 120B da OpenAI, o melhor modelo gratuito disponível
-MODELO_JUIZ = "openai/gpt-oss-120b:free"
+# Juiz — DeepSeek V3 (fiável, rápido, grátis)
+MODELO_JUIZ = "deepseek/deepseek-chat-v3-0324:free"
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
@@ -511,10 +511,10 @@ with tab3:
     
     **OpenRouter MoA 🏆 (Mixture of Agents - Melhor Qualidade)**
     - **3 especialistas em paralelo:**
-      - Llama 2 70B (Lógica)
-      - Mistral 7B (Rotas & Geometria)
-      - Neural Chat 7B (Raciocínio)
-    - **1 Juiz inteligente** que escolhe a melhor
+      - Llama 3.3 70B (Lógica e Português)
+      - NVIDIA Nemotron 3 Super (Planeamento e Rotas)
+      - DeepSeek R1 (Raciocínio e Tempo)
+    - **1 Juiz inteligente** (DeepSeek V3) que escolhe a melhor
     - Mais preciso e confiável
     - Todos os modelos GRATUITOS!
     - Va a https://openrouter.ai
