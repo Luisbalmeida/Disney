@@ -64,11 +64,44 @@ def buscar_tempos_espera():
 
 # Mapeamento de atrações para zonas (validado com API Theme Parks Wiki)
 ZONA_POR_ATRACAO = {
-    "Frontierland": ["Big Thunder Mountain", "Phantom Manor", "Indiana Jones", "La Cabane des Robinson"],
-    "Fantasyland": ["Cinderella Castle", "it's a small world", "Blanche-Neige et les Sept Nains", "Les Voyages de Pinocchio", "Le Carrousel de Lancelot", "Peter Pan's Flight", "Dumbo the Flying Elephant", "Mad Hatter's Tea Cups", "Alice's Curious Labyrinth", "La Tanière du Dragon", "Casey Jr"],
-    "Adventureland": ["Jungle Cruise", "Adventure Isle", "Le Passage Enchanté d'Aladdin", "Pirates of the Caribbean", "La Cabane", "Les Mystères du Nautilus"],
-    "Discoveryland": ["Star Wars Hyperspace Mountain", "Orbitron", "Buzz Lightyear Laser Blast", "Autopia"],
-    "Main Street, U.S.A.": ["Disneyland Railroad", "Main Street Vehicles"]
+    "Frontierland": [
+        "Big Thunder Mountain",
+        "Phantom Manor",
+        "Thunder Mesa Riverboat Landing",
+        "Rustler Roundup Shootin' Gallery",
+    ],
+    "Fantasyland": [
+        "It's a Small World",
+        "Peter Pan's Flight",
+        "Sleeping Beauty Castle Walkthrough",
+        "Pinocchio's Fantastic Journey",
+        "Snow White and the Seven Dwarfs",
+        "Dumbo the Flying Elephant",
+        "Mad Hatter's Tea Cups",
+        "Alice's Curious Labyrinth",
+        "Lancelot's Carousel",
+        "Storybook Land Canal Boats",
+        "Casey Jr. Circus Train",
+    ],
+    "Adventureland": [
+        "Pirates of the Caribbean",
+        "Indiana Jones and the Temple of Peril",
+        "Adventure Isle",
+        "Aladdin's Enchanted Passage",
+        "Swiss Family Treehouse",
+    ],
+    "Discoveryland": [
+        "Hyperspace Mountain",
+        "Star Tours: The Adventure Continues",
+        "Buzz Lightyear Laser Blast",
+        "Autopia",
+        "Orbitron",
+        "The Mysteries of the Nautilus",
+        "Mickey's PhilharMagic",
+    ],
+    "Main Street, U.S.A.": [
+        "Disneyland Railroad",
+    ],
 }
 
 def obter_zona_atracao(nome_atracao):
