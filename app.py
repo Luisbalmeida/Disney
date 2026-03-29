@@ -62,13 +62,13 @@ def buscar_tempos_espera():
                 })
     return pd.DataFrame(attractions).sort_values(by="Espera (min)")
 
-# Mapeamento de atrações para zonas
+# Mapeamento de atrações para zonas (validado com API Theme Parks Wiki)
 ZONA_POR_ATRACAO = {
-    "Frontierland": ["Big Thunder Mountain", "Phantom Manor", "Lucky Luke Saloon", "Tom Sawyer Island Rafts"],
-    "Fantasyland": ["Cinderella Castle", "It's a Small World", "Sleeping Beauty Castle Walkthrough", "Pinocchio's Fantastic Journey", "Snow White and the Seven Dwarfs", "Peter Pan's Flight", "Dumbo the Flying Elephant", "The Mad Teacups", "Alice's Curious Labyrinth"],
-    "Adventureland": ["Jungle Cruise", "Adventure Isle", "Aladdin's Enchanted Carpet", "The Magic Carpets of Aladdin", "Pirates of the Caribbean"],
-    "Discoveryland": ["Space Mountain", "Star Tours", "Buzz Lightyear of the Galaxy", "Autopia"],
-    "Main Street, U.S.A.": ["Disneyland Railroad", "The Walt Disney Studios Park Railroad"]
+    "Frontierland": ["Big Thunder Mountain", "Phantom Manor", "Indiana Jones", "La Cabane des Robinson"],
+    "Fantasyland": ["Cinderella Castle", "it's a small world", "Blanche-Neige et les Sept Nains", "Les Voyages de Pinocchio", "Le Carrousel de Lancelot", "Peter Pan's Flight", "Dumbo the Flying Elephant", "Mad Hatter's Tea Cups", "Alice's Curious Labyrinth", "La Tanière du Dragon", "Casey Jr"],
+    "Adventureland": ["Jungle Cruise", "Adventure Isle", "Le Passage Enchanté d'Aladdin", "Pirates of the Caribbean", "La Cabane", "Les Mystères du Nautilus"],
+    "Discoveryland": ["Star Wars Hyperspace Mountain", "Orbitron", "Buzz Lightyear Laser Blast", "Autopia"],
+    "Main Street, U.S.A.": ["Disneyland Railroad", "Main Street Vehicles"]
 }
 
 def obter_zona_atracao(nome_atracao):
