@@ -28,14 +28,27 @@ except Exception as e:
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
 
-# Modelos OpenRouter Gratuitos (Atualizados)
+# Modelos OpenRouter — ACTUALIZADO MARÇO 2026
 MODELOS_ESPECIALISTAS = [
-    {"name": "Llama 2 70B", "id": "meta-llama/llama-2-70b-chat:free", "role": "Especialista em Lógica"},
-    {"name": "Mistral 7B", "id": "mistralai/mistral-7b-instruct:free", "role": "Especialista em Rotas"},
-    {"name": "Neural Chat 7B", "id": "intel/neural-chat-7b-v3-1:free", "role": "Especialista em Raciocínio"}
+    {
+        "name": "Llama 3.3 70B",
+        "id": "meta-llama/llama-3.3-70b-instruct:free",
+        "role": "Especialista em Lógica e Português"
+    },
+    {
+        "name": "NVIDIA Nemotron 3 Super",
+        "id": "nvidia/nemotron-3-super:free",
+        "role": "Especialista em Planeamento e Rotas"
+    },
+    {
+        "name": "Qwen3 Next 80B",
+        "id": "qwen/qwen3-next-80b-a3b-instruct:free",
+        "role": "Especialista em Raciocínio e Tempo"
+    }
 ]
 
-MODELO_JUIZ = "meta-llama/llama-2-70b-chat:free"  # Usar modelo gratuito que funciona
+# O Juiz — GPT-OSS 120B da OpenAI, o melhor modelo gratuito disponível
+MODELO_JUIZ = "openai/gpt-oss-120b:free"
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
@@ -91,37 +104,52 @@ def obter_zona_atracao(nome_atracao):
                 return zona
     return "Desconhecida"
 
-def chamar_openrouter(prompt, modelo_id):
-    """Chama OpenRouter API com modelo específico"""
+def chamar_openrouter(prompt, modelo_id, tentativas=3):
+    """Chama OpenRouter API com retry automático em caso de Rate Limit"""
     if not OPENROUTER_API_KEY:
         return None, "❌ OpenRouter não configurado"
     
-    try:
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "HTTP-Referer": "https://github.com/Luisbalmeida/Disney",
-            "X-Title": "Disney AI Guide"
-        }
-        
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json={
-                "model": modelo_id,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.4,
-                "max_tokens": 1000
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"], None
-        else:
-            return None, f"Erro {response.status_code}: {response.text[:200]}"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://github.com/Luisbalmeida/Disney",
+        "X-Title": "Disney AI Guide"
+    }
     
-    except Exception as e:
-        return None, f"Erro ao contactar OpenRouter: {str(e)[:200]}"
+    for tentativa in range(tentativas):
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": modelo_id,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.4,
+                    "max_tokens": 1000
+                },
+                timeout=40
+            )
+            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"], None
+            
+            elif response.status_code == 429:
+                # Rate Limit: esperar e tentar novamente
+                espera = 5 * (tentativa + 1)
+                time.sleep(espera)
+                continue
+            
+            else:
+                return None, f"Erro {response.status_code}: {response.text[:200]}"
+        
+        except requests.Timeout:
+            if tentativa < tentativas - 1:
+                time.sleep(3)
+                continue
+            return None, "❌ Timeout: O modelo demorou demasiado a responder."
+        except Exception as e:
+            return None, f"❌ Erro: {str(e)[:200]}"
+    
+    return None, "❌ Todas as tentativas falharam (Rate Limit). Tente novamente em 30 segundos."
 
 def gerar_recomendacao_especialista(prompt, modelo):
     """Gera recomendação de um especialista individual"""
