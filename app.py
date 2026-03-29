@@ -15,6 +15,7 @@ st.title("🏰 Guia IA - Disneyland Paris")
 try:
     GROQ_API_KEY = st.secrets.get("GROQ_API_KEY", "")
     MISTRAL_API_KEY = st.secrets.get("MISTRAL_API_KEY", "")
+    OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")  # ✅ NOVO
     
     groq_client = None
     if GROQ_API_KEY:
@@ -22,7 +23,7 @@ try:
     
 except Exception as e:
     st.warning(f"⚠️ Erro ao configurar IAs: {e}")
-    st.info("Configure GROQ_API_KEY e/ou MISTRAL_API_KEY nos Secrets do Streamlit para usar IA.")
+    st.info("Configure GROQ_API_KEY, MISTRAL_API_KEY e/ou OPENROUTER_API_KEY nos Secrets.")
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
@@ -113,8 +114,45 @@ def chamar_mistral(prompt):
     except Exception as e:
         return None, f"❌ Erro ao contactar Mistral: {str(e)}"
 
+def chamar_openrouter(prompt):  # ✅ NOVO
+    """Chama a API do OpenRouter via HTTP (compatível com OpenAI)"""
+    if not OPENROUTER_API_KEY:
+        return None, "❌ OpenRouter não configurado. Adicione OPENROUTER_API_KEY nos Secrets."
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://disney-ai-guide.streamlit.app",
+            "X-Title": "Disney AI Guide"
+        }
+
+        payload = {
+            "model": "google/gemini-2.0-flash-001",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.4
+        }
+
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=40
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return data["choices"][0]["message"]["content"], None
+
+        return None, f"❌ Erro OpenRouter {response.status_code}: {response.text[:300]}"
+
+    except Exception as e:
+        return None, f"❌ Erro ao contactar OpenRouter: {str(e)}"
+
 def gerar_recomendacao_ia(prompt, ia_selecionada):
-    """Gera recomendação usando a IA selecionada (Groq ou Mistral)"""
+    """Gera recomendação usando a IA selecionada (Groq, Mistral ou OpenRouter)"""
     try:
         if ia_selecionada == "Groq":
             if not groq_client:
@@ -128,6 +166,9 @@ def gerar_recomendacao_ia(prompt, ia_selecionada):
         
         elif ia_selecionada == "Mistral":
             return chamar_mistral(prompt)
+        
+        elif ia_selecionada == "OpenRouter":  # ✅ NOVO
+            return chamar_openrouter(prompt)
         
         elif ia_selecionada == "Manual":
             return "📝 Ver tabela de atrações na aba 'Histórico' (restantes) para escolher manualmente", None
@@ -158,13 +199,19 @@ with tab1:
         visitadas = st.multiselect("Seleciona as atrações:", nomes_atracoes)
 
         st.subheader("🤖 Qual IA usar?")
-        opcoes_ia = ["Groq (Rápido)", "Mistral (Qualidade)", "Manual (Ver tabela)"]
+        opcoes_ia = [
+            "Groq (Rápido)",
+            "Mistral (Qualidade)",
+            "OpenRouter (Versátil)",  # ✅ NOVO
+            "Manual (Ver tabela)"
+        ]
         ia_selecionada = st.selectbox("Escolhe a IA:", opcoes_ia)
         
         # Mapear opção para nome real
         ia_map = {
             "Groq (Rápido)": "Groq",
             "Mistral (Qualidade)": "Mistral",
+            "OpenRouter (Versátil)": "OpenRouter",  # ✅ NOVO
             "Manual (Ver tabela)": "Manual"
         }
         ia_nome = ia_map[ia_selecionada]
