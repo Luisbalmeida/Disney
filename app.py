@@ -62,6 +62,28 @@ def buscar_tempos_espera():
                 })
     return pd.DataFrame(attractions).sort_values(by="Espera (min)")
 
+# 4b. Carregar matriz de distâncias
+@st.cache_data(ttl=3600)
+def carregar_distancias():
+    """Carrega matriz de distâncias entre atrações em minutos"""
+    try:
+        df_dist = pd.read_csv("disney_distances.csv", index_col=0)
+        return df_dist
+    except Exception as e:
+        st.warning(f"⚠️ Erro ao carregar distâncias: {e}")
+        return None
+
+df_distances = carregar_distancias()
+
+def obter_distancia(atracao_origem, atracao_destino):
+    """Retorna distância em minutos entre duas atrações"""
+    if df_distances is None:
+        return None
+    try:
+        return int(df_distances.loc[atracao_origem, atracao_destino])
+    except (KeyError, TypeError):
+        return None
+
 # Mapeamento de atrações para zonas (validado com API Theme Parks Wiki)
 ZONA_POR_ATRACAO = {
     "Frontierland": [
@@ -326,14 +348,24 @@ with tab1:
         # ✅ Listar TODAS as atrações já visitadas (não apenas as desta sessão)
         lista_visitadas = ", ".join(todas_visitadas) if todas_visitadas else "Ainda não visitei nenhuma"
         
+        # ✅ Calcular distâncias reais para todas as atrações disponíveis
+        distancias_reais = []
+        for _, row in nao_visitadas.iterrows():
+            dist = obter_distancia(localizacao_atual if localizacao_atual != 'Não sei ao certo' else atracao_atual if 'atracao_atual' in locals() else 'Disneyland Railroad (Main St)', row['Nome'])
+            wait = int(row['Espera (min)'])
+            if dist:
+                distancias_reais.append(f"  • {row['Nome']}: {dist} min a pé | Fila: {wait} min")
+            else:
+                distancias_reais.append(f"  • {row['Nome']}: ? min a pé | Fila: {wait} min")
+        
+        lista_distancias = "\n".join(distancias_reais) if distancias_reais else "Sem atrações disponíveis"
+        
         # ✅ Debug: mostrar quantas foram excluídas
         st.info(f"📍 Atrações já visitadas no histórico: **{len(todas_visitadas)}** | Disponíveis: **{len(nao_visitadas)}**")
 
         regras_distancia = """
-        Regras de caminhada na Disneyland Paris (velocidade normal de adulto):
-        - Mudar de atração DENTRO DA MESMA ZONA: 1 a 3 min.
-        - Zonas ADJACENTES (ex: Main Street para Fantasyland): 4 a 6 min.
-        - Zonas OPOSTAS (ex: Discoveryland para Adventureland): 8 a 12 min.
+        Informação de Distâncias (em minutos a pé a partir da tua localização):
+        Usa estas distâncias REAIS para calcular o tempo total (fila + caminhada)
         """
 
         prompt = f"""
@@ -344,29 +376,31 @@ with tab1:
         ⛔ ATRAÇÕES JÁ VISITADAS (NUNCA SUGERIR ESTAS):
         {lista_visitadas}
 
-        ✅ ATRAÇÕES DISPONÍVEIS E FILAS (Escolhe APENAS destas):
-        {lista_disponiveis}
+        ✅ ATRAÇÕES DISPONÍVEIS COM DISTÂNCIAS E FILAS (Escolhe APENAS destas):
+        {lista_distancias}
 
         {regras_distancia}
 
         TAREFA CRÍTICA:
         1. NUNCA sugiras atrações da lista "JÁ VISITADAS"
         2. Sugere APENAS da lista "DISPONÍVEIS"
-        3. Considera: localização atual + tempo de fila + distância de caminhada
-        4. Minimiza a caminhada
+        3. Analisa: tempo de fila + distância de caminhada = tempo total
+        4. Recomenda a atração com melhor razão custo-benefício (fila curta + perto)
+        5. Minimiza o tempo total de espera + deslocação
 
         ESTRUTURA DA RESPOSTA:
         1. 🎯 **Recomendação Principal:** [Nome - APENAS da lista DISPONÍVEIS]
-        2. 🚶 **Tempo de Caminhada:** [Estimativa de {localizacao_atual} até lá]
-        3. ⏱️ **Fila Atual:** [X min]
-        4. 💡 **Porquê:** [Razão breve]
-        5. 🥈 **Plano B e C (Top 3 alternativas):**
-           - [Nome] (Fila: X min | Caminhada: Y min)
-           - [Nome] (Fila: X min | Caminhada: Y min)
+        2. 🚶 **Tempo de Caminhada:** [X min]
+        3. ⏱️ **Fila Atual:** [Y min]
+        4. 📊 **Tempo Total Esperado:** [X + Y min]
+        5. 💡 **Porquê:** [Razão breve - melhor resultado neste momento]
+        6. 🥈 **Plano B e C (Top 3 alternativas):**
+           - [Nome] (Caminhada: X min | Fila: Y min | Total: Z min)
+           - [Nome] (Caminhada: X min | Fila: Y min | Total: Z min)
 
         ⚠️ AVISO: Se sugerires qualquer atração da lista "JÁ VISITADAS", a resposta será inválida!
         
-        Responde em português de Portugal. Sê conciso.
+        Responde em português de Portugal. Sê conciso mas convincente.
         """
 
         st.divider()
@@ -522,14 +556,19 @@ with tab3:
         # Adicionar zona a cada atração
         outras_atracoes_df['Zona'] = outras_atracoes_df['Nome'].apply(obter_zona_atracao)
         
-        # Criar coluna de distância (simplicidade)
-        def calcular_distancia(zona_destino):
-            if zona_destino == zona_atual:
-                return "Perto (1-3 min)"
+        # Calcular distância real de cada atração
+        def calcular_distancia_real(nome_atracao):
+            dist = obter_distancia(atracao_atual, nome_atracao)
+            if dist is None:
+                return "? min"
+            elif dist <= 2:
+                return f"🟢 {dist} min (Perto)"
+            elif dist <= 4:
+                return f"🟡 {dist} min (Médio)"
             else:
-                return "Longe (4-12 min)"
+                return f"🔴 {dist} min (Longe)"
         
-        outras_atracoes_df['Distância'] = outras_atracoes_df['Zona'].apply(calcular_distancia)
+        outras_atracoes_df['Distância'] = outras_atracoes_df['Nome'].apply(calcular_distancia_real)
         
         # Reordenar e ordenar
         df_display = outras_atracoes_df[['Nome', 'Zona', 'Espera (min)', 'Distância']].sort_values(
