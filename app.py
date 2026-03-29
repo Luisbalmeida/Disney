@@ -28,14 +28,14 @@ except Exception as e:
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
 
-# Modelos OpenRouter Gratuitos
+# Modelos OpenRouter Gratuitos (Atualizados)
 MODELOS_ESPECIALISTAS = [
-    {"name": "Meta Llama 3.3 70B", "id": "meta-llama/llama-3.3-70b-instruct:free", "role": "Especialista em Lógica"},
-    {"name": "Qwen 2.5 72B", "id": "qwen/qwen-2.5-72b-instruct:free", "role": "Especialista em Rotas"},
-    {"name": "DeepSeek R1", "id": "deepseek/deepseek-r1-distill-llama-70b:free", "role": "Especialista em Raciocínio"}
+    {"name": "Llama 2 70B", "id": "meta-llama/llama-2-70b-chat:free", "role": "Especialista em Lógica"},
+    {"name": "Mistral 7B", "id": "mistralai/mistral-7b-instruct:free", "role": "Especialista em Rotas"},
+    {"name": "Neural Chat 7B", "id": "intel/neural-chat-7b-v3-1:free", "role": "Especialista em Raciocínio"}
 ]
 
-MODELO_JUIZ = "openai/gpt-4o-mini:free"  # Alternativa leve do GPT-OSS
+MODELO_JUIZ = "meta-llama/llama-2-70b-chat:free"  # Usar modelo gratuito que funciona
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
@@ -483,9 +483,9 @@ with tab3:
     
     **OpenRouter MoA 🏆 (Mixture of Agents - Melhor Qualidade)**
     - **3 especialistas em paralelo:**
-      - Meta Llama 3.3 70B (Lógica)
-      - Qwen 2.5 72B (Rotas & Geometria)
-      - DeepSeek R1 (Raciocínio Profundo)
+      - Llama 2 70B (Lógica)
+      - Mistral 7B (Rotas & Geometria)
+      - Neural Chat 7B (Raciocínio)
     - **1 Juiz inteligente** que escolhe a melhor
     - Mais preciso e confiável
     - Todos os modelos GRATUITOS!
