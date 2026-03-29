@@ -235,7 +235,7 @@ with st.spinner("A carregar tempos de espera reais da Disney..."):
 st.write("Bem-vindo! Escolhe onde estás e o que já visitaste para obteres a melhor rota.")
 
 # 5. Tabs para navegação
-tab1, tab2, tab3 = st.tabs(["🎯 Recomendações", "📊 Histórico", "❓ Ajuda"])
+tab1, tab2, tab3, tab4 = st.tabs(["🎯 Recomendações", "📊 Histórico", "🗺️ Mapa Rápido", "❓ Ajuda"])
 
 with tab1:
     # 6. Interface da App - Recomendações
@@ -441,6 +441,73 @@ with tab2:
         st.info("📭 Ainda não visitaste nenhuma atração. Começa a adicionar!")
 
 with tab3:
+    st.subheader("🗺️ Explorador de Atrações")
+    st.write("Seleciona a atração onde estás agora para ver todas as outras com tempos de espera.")
+    
+    # Obter todas as atrações
+    todas_atracoes = sorted(df_attractions['Nome'].unique())
+    
+    # Selectbox com atração atual
+    atracao_atual = st.selectbox(
+        "🎢 Onde estou agora?",
+        todas_atracoes,
+        key="atracao_atual_mapa"
+    )
+    
+    # Obter zona da atração atual
+    zona_atual = obter_zona_atracao(atracao_atual)
+    
+    # Filtrar outras atrações (excluindo a atual)
+    outras_atracoes_df = df_attractions[df_attractions['Nome'] != atracao_atual].copy()
+    
+    if len(outras_atracoes_df) > 0:
+        # Adicionar zona a cada atração
+        outras_atracoes_df['Zona'] = outras_atracoes_df['Nome'].apply(obter_zona_atracao)
+        
+        # Criar coluna de distância (simplicidade)
+        def calcular_distancia(zona_destino):
+            if zona_destino == zona_atual:
+                return "Perto (1-3 min)"
+            else:
+                return "Longe (4-12 min)"
+        
+        outras_atracoes_df['Distância'] = outras_atracoes_df['Zona'].apply(calcular_distancia)
+        
+        # Reordenar e ordenar
+        df_display = outras_atracoes_df[['Nome', 'Zona', 'Espera (min)', 'Distância']].sort_values(
+            by=['Zona', 'Espera (min)']
+        )
+        
+        # Espaçamento visual
+        col1, col2 = st.columns(2)
+        with col1:
+            st.info(f"📍 Estás em: **{atracao_atual}** ({zona_atual})")
+        with col2:
+            st.metric("Outras atrações abertas", len(df_display))
+        
+        st.divider()
+        
+        # Tabela
+        st.markdown("### 📊 Todas as Atrações Disponíveis")
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        
+        # Filtro por zona (opcional)
+        st.markdown("### 🎯 Filtrar por Zona")
+        zonas_disponiveis = ['Todas'] + sorted(df_display['Zona'].unique().tolist())
+        zona_selecionada = st.selectbox(
+            "Mostra apenas atrações de:",
+            zonas_disponiveis,
+            key="zona_filtro_mapa"
+        )
+        
+        if zona_selecionada != "Todas":
+            df_filtrado = df_display[df_display['Zona'] == zona_selecionada]
+            st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+            st.metric("Atrações nesta zona", len(df_filtrado))
+    else:
+        st.warning("⚠️ Sem outras atrações disponíveis.")
+
+with tab4:
     st.subheader("❓ Como funciona?")
     st.markdown("""
     ### 📱 Funcionalidades Principais:
