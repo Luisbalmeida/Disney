@@ -114,25 +114,74 @@ def chamar_mistral(prompt):
     except Exception as e:
         return None, f"❌ Erro ao contactar Mistral: {str(e)}"
 
-def chamar_openrouter(prompt):  # ✅ NOVO
-    """Chama a API do OpenRouter via HTTP (compatível com OpenAI)"""
+def chamar_openrouter_conciliador(prompt, localizacao_atual, lista_visitadas, lista_disponiveis):  # ✅ NOVO - Conciliador
+    """OpenRouter analisa recomendações de Groq e Mistral e escolhe a melhor"""
     if not OPENROUTER_API_KEY:
         return None, "❌ OpenRouter não configurado. Adicione OPENROUTER_API_KEY nos Secrets."
 
     try:
+        # 1. Obter recomendação do Groq
+        resposta_groq, erro_groq = None, None
+        if groq_client:
+            try:
+                response = groq_client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="llama-3.3-70b-versatile", 
+                    temperature=0.4
+                )
+                resposta_groq = response.choices[0].message.content
+            except Exception as e:
+                erro_groq = str(e)
+        
+        # 2. Obter recomendação do Mistral
+        resposta_mistral, erro_mistral = chamar_mistral(prompt)
+        
+        # Se nenhuma funcionou, informar
+        if not resposta_groq and not resposta_mistral:
+            return None, f"❌ Nenhuma IA respondeu. Groq: {erro_groq}, Mistral: {erro_mistral}"
+        
+        # 3. Criar prompt para OpenRouter analisar ambas
+        prompt_conciliador = f"""
+        Você é um conciliador especializado em rotas na Disneyland Paris.
+        
+        Duas IAs deram recomendações para a próxima atração. Analise ambas e escolha a MELHOR opção.
+        
+        CONTEXTO:
+        - Localização atual: {localizacao_atual}
+        - Já visitadas: {lista_visitadas}
+        
+        RECOMENDAÇÃO DO GROQ (IA rápida):
+        {resposta_groq if resposta_groq else "[Groq não respondeu]"}
+        
+        RECOMENDAÇÃO DO MISTRAL (IA detalhista):
+        {resposta_mistral if resposta_mistral else "[Mistral não respondeu]"}
+        
+        TAREFA:
+        Analise ambas as recomendações e escolha a MELHOR atração para visitar AGORA.
+        Considere velocidade de resposta + qualidade da análise.
+        
+        Retorne:
+        1. 🎯 **Decisão Final:** [Nome da atração escolhida]
+        2. 🤝 **Análise de Conciliação:** [Por que esta é melhor]
+        3. 🥈 **Por que a outra não foi escolhida:** [Breve explicação]
+        
+        Responda em português de Portugal. Seja conciso mas convincente.
+        """
+        
+        # 4. Chamar OpenRouter para conciliar
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://disney-ai-guide.streamlit.app",
-            "X-Title": "Disney AI Guide"
+            "X-Title": "Disney AI Guide - Conciliador"
         }
 
         payload = {
             "model": "google/gemini-2.0-flash-001",
             "messages": [
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": prompt_conciliador}
             ],
-            "temperature": 0.4
+            "temperature": 0.3  # Temperatura mais baixa para decisão mais coerente
         }
 
         response = requests.post(
@@ -144,15 +193,16 @@ def chamar_openrouter(prompt):  # ✅ NOVO
 
         if response.status_code == 200:
             data = response.json()
-            return data["choices"][0]["message"]["content"], None
+            resposta = data["choices"][0]["message"]["content"]
+            return f"🤝 **Conciliação de IAs:**\n\n{resposta}", None
 
         return None, f"❌ Erro OpenRouter {response.status_code}: {response.text[:300]}"
 
     except Exception as e:
         return None, f"❌ Erro ao contactar OpenRouter: {str(e)}"
 
-def gerar_recomendacao_ia(prompt, ia_selecionada):
-    """Gera recomendação usando a IA selecionada (Groq, Mistral ou OpenRouter)"""
+def gerar_recomendacao_ia(prompt, ia_selecionada, localizacao_atual=None, lista_visitadas=None, lista_disponiveis=None):
+    """Gera recomendação usando a IA selecionada (Groq, Mistral ou OpenRouter como conciliador)"""
     try:
         if ia_selecionada == "Groq":
             if not groq_client:
@@ -167,8 +217,8 @@ def gerar_recomendacao_ia(prompt, ia_selecionada):
         elif ia_selecionada == "Mistral":
             return chamar_mistral(prompt)
         
-        elif ia_selecionada == "OpenRouter":  # ✅ NOVO
-            return chamar_openrouter(prompt)
+        elif ia_selecionada == "OpenRouter":  # ✅ NOVO - Conciliador
+            return chamar_openrouter_conciliador(prompt, localizacao_atual, lista_visitadas, lista_disponiveis)
         
         elif ia_selecionada == "Manual":
             return "📝 Ver tabela de atrações na aba 'Histórico' (restantes) para escolher manualmente", None
@@ -278,7 +328,7 @@ with tab1:
             st.info("📝 **Modo Manual:** Ver tabela de atrações que faltam visitar na aba '📊 Histórico'")
         else:
             with st.spinner(f"A consultar {ia_nome} para calcular a tua rota..."):
-                resposta, erro = gerar_recomendacao_ia(prompt, ia_nome)
+                resposta, erro = gerar_recomendacao_ia(prompt, ia_nome, localizacao_atual, lista_visitadas, lista_disponiveis)
                 if erro:
                     st.error(erro)
                 else:
@@ -397,7 +447,7 @@ with tab3:
     
     1. **🎯 Recomendações** 
        - Recebe sugestões de IA sobre qual é a próxima melhor atração
-       - Escolhe entre: **Groq**, **Mistral**, ou **Manual**
+       - Escolhe entre: **Groq**, **Mistral**, **OpenRouter (Conciliador)**, ou **Manual**
        - Baseado na tua localização e histórico
     
     2. **📊 Histórico e Tempos de Espera**
@@ -412,19 +462,27 @@ with tab3:
     
     ### 🤖 Escolher IA:
     
-    **Groq (Rápido)**
+    **Groq (Rápido) ⚡**
     - Muito rápido
     - Excelente qualidade
     - Modelo: Llama 3.3 70B
+    - Ideal para: Respostas imediatas
     - Va a https://console.groq.com
     
-    **Mistral (Qualidade)**
+    **Mistral (Qualidade) 🎓**
     - Resposta detalhada
     - Modelo: Mistral Large
-    - Ótimo para análise de rotas
+    - Ideal para: Análise profunda de rotas
     - Va a https://console.mistral.ai
     
-    **Manual**
+    **OpenRouter (Conciliador) 🤝 ← NOVO**
+    - **Compara Groq vs Mistral automaticamente**
+    - Pede ao OpenRouter para escolher a melhor
+    - Modelo: Google Gemini 2.0 Flash
+    - Ideal para: Melhor decisão com análise combinada
+    - Va a https://openrouter.ai/keys
+    
+    **Manual 📝**
     - Ver tabela de atrações restantes
     - Escolher tu próprio
     - Sem necessidade de API
@@ -444,18 +502,17 @@ with tab3:
     - Tempo de espera quando visitaste
     - Data da visita
     
-    ### 🏆 Por que comparar Groq e Mistral?
+    ### 🏆 Como o Conciliador (OpenRouter) Funciona?
     
-    **Groq:**
-    - Mais rápido
-    - Ótimo para respostas imediatas
-    - Llama 3.3 é excelente em lógica
+    1. **Groq** da a sua recomendação (rápida)
+    2. **Mistral** da a sua recomendação (detalhada)
+    3. **OpenRouter** analisa ambas e escolhe a melhor ✨
     
-    **Mistral:**
-    - Mais detalhado
-    - Ótimo para análise profunda
-    - Excelente em português
+    Assim gets o melhor dos dois mundos:
+    - ⚡ Velocidade do Groq
+    - 🎓 Qualidade do Mistral
+    - 🤝 Decisão inteligente do OpenRouter
     
-    Teste ambas e veja qual prefere! 🚀
+    Teste os 3 modos e veja qual prefere! 🚀
     
     """)
