@@ -5,7 +5,6 @@ import json
 import os
 from datetime import datetime
 from groq import Groq
-from mistralai import Mistral
 import time
 
 # 1. Configuração da Página
@@ -27,11 +26,6 @@ except Exception as e:
 
 # 3. Ficheiro de histórico local
 VISITED_FILE = "visited_attractions.json"
-
-# Inicializar cliente Mistral
-mistral_client = None
-if MISTRAL_API_KEY:
-    mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
 def carregar_historico():
     """Carrega o histórico de atrações visitadas do ficheiro JSON"""
@@ -84,6 +78,41 @@ def obter_zona_atracao(nome_atracao):
                 return zona
     return "Desconhecida"
 
+def chamar_mistral(prompt):
+    """Chama a API da Mistral via HTTP sem SDK"""
+    if not MISTRAL_API_KEY:
+        return None, "❌ Mistral não configurado. Adicione MISTRAL_API_KEY nos Secrets."
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {MISTRAL_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": "mistral-large-latest",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.4
+        }
+
+        response = requests.post(
+            "https://api.mistral.ai/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=40
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return data["choices"][0]["message"]["content"], None
+
+        return None, f"❌ Erro Mistral {response.status_code}: {response.text[:300]}"
+
+    except Exception as e:
+        return None, f"❌ Erro ao contactar Mistral: {str(e)}"
+
 def gerar_recomendacao_ia(prompt, ia_selecionada):
     """Gera recomendação usando a IA selecionada (Groq ou Mistral)"""
     try:
@@ -98,14 +127,7 @@ def gerar_recomendacao_ia(prompt, ia_selecionada):
             return response.choices[0].message.content, None
         
         elif ia_selecionada == "Mistral":
-            if not mistral_client:
-                return None, "❌ Mistral não configurado. Adicione MISTRAL_API_KEY nos Secrets."
-            response = mistral_client.chat.complete(
-                model="mistral-large-latest",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.4
-            )
-            return response.choices[0].message.content, None
+            return chamar_mistral(prompt)
         
         elif ia_selecionada == "Manual":
             return "📝 Ver tabela de atrações na aba 'Histórico' (restantes) para escolher manualmente", None
