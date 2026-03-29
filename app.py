@@ -318,10 +318,16 @@ with tab1:
         guardar_historico(historico)
         st.success("✅ Atrações guardadas no histórico!")
         
-        nao_visitadas = df_attractions[~df_attractions['Nome'].isin(visitadas)].copy()
+        # ✅ CORREÇÃO: Incluir TODAS as atrações já visitadas (histórico completo)
+        todas_visitadas = list(historico["visitadas"].keys())
+        nao_visitadas = df_attractions[~df_attractions['Nome'].isin(todas_visitadas)].copy()
         
         lista_disponiveis = nao_visitadas.to_string(index=False)
-        lista_visitadas = ", ".join(visitadas) if visitadas else "Ainda não visitei nenhuma"
+        # ✅ Listar TODAS as atrações já visitadas (não apenas as desta sessão)
+        lista_visitadas = ", ".join(todas_visitadas) if todas_visitadas else "Ainda não visitei nenhuma"
+        
+        # ✅ Debug: mostrar quantas foram excluídas
+        st.info(f"📍 Atrações já visitadas no histórico: **{len(todas_visitadas)}** | Disponíveis: **{len(nao_visitadas)}**")
 
         regras_distancia = """
         Regras de caminhada na Disneyland Paris (velocidade normal de adulto):
@@ -333,26 +339,34 @@ with tab1:
         prompt = f"""
         És um guia especializado na Disneyland Paris.
 
-        LOCALIZAÇÃO: {localizacao_atual}
-        JÁ VISITADAS: {lista_visitadas}
+        LOCALIZAÇÃO ATUAL: {localizacao_atual}
+        
+        ⛔ ATRAÇÕES JÁ VISITADAS (NUNCA SUGERIR ESTAS):
+        {lista_visitadas}
 
-        ATRAÇÕES DISPONÍVEIS E FILAS:
+        ✅ ATRAÇÕES DISPONÍVEIS E FILAS (Escolhe APENAS destas):
         {lista_disponiveis}
 
         {regras_distancia}
 
-        Tendo em conta a localização atual, o tempo de fila e minimizando a caminhada, sugere a MELHOR atração para ir AGORA. Exclui as já visitadas.
+        TAREFA CRÍTICA:
+        1. NUNCA sugiras atrações da lista "JÁ VISITADAS"
+        2. Sugere APENAS da lista "DISPONÍVEIS"
+        3. Considera: localização atual + tempo de fila + distância de caminhada
+        4. Minimiza a caminhada
 
         ESTRUTURA DA RESPOSTA:
-        1. 🎯 **Recomendação Principal:** [Nome]
+        1. 🎯 **Recomendação Principal:** [Nome - APENAS da lista DISPONÍVEIS]
         2. 🚶 **Tempo de Caminhada:** [Estimativa de {localizacao_atual} até lá]
         3. ⏱️ **Fila Atual:** [X min]
         4. 💡 **Porquê:** [Razão breve]
-        5. 🥈 **Plano B e C (Top 3):**
+        5. 🥈 **Plano B e C (Top 3 alternativas):**
            - [Nome] (Fila: X min | Caminhada: Y min)
            - [Nome] (Fila: X min | Caminhada: Y min)
 
-        Responde em português de Portugal.
+        ⚠️ AVISO: Se sugerires qualquer atração da lista "JÁ VISITADAS", a resposta será inválida!
+        
+        Responde em português de Portugal. Sê conciso.
         """
 
         st.divider()
@@ -484,16 +498,27 @@ with tab3:
     atracao_atual = st.selectbox(
         "🎢 Onde estou agora?",
         todas_atracoes,
-        key="atracao_atual_mapa"
+        key="atracao_atual_mapa",
+        help="Escolhe a tua posição atual"
     )
     
     # Obter zona da atração atual
     zona_atual = obter_zona_atracao(atracao_atual)
     
+    # Botão de refresh (para garantir atualização)
+    col_info, col_refresh = st.columns([3, 1])
+    with col_info:
+        st.info(f"📍 Estás em: **{atracao_atual}** ({zona_atual})")
+    with col_refresh:
+        if st.button("🔄 Atualizar", key="refresh_mapa"):
+            st.rerun()
+    
     # Filtrar outras atrações (excluindo a atual)
     outras_atracoes_df = df_attractions[df_attractions['Nome'] != atracao_atual].copy()
     
     if len(outras_atracoes_df) > 0:
+        st.metric("Outras atrações abertas", len(outras_atracoes_df))
+        
         # Adicionar zona a cada atração
         outras_atracoes_df['Zona'] = outras_atracoes_df['Nome'].apply(obter_zona_atracao)
         
@@ -510,13 +535,6 @@ with tab3:
         df_display = outras_atracoes_df[['Nome', 'Zona', 'Espera (min)', 'Distância']].sort_values(
             by=['Zona', 'Espera (min)']
         )
-        
-        # Espaçamento visual
-        col1, col2 = st.columns(2)
-        with col1:
-            st.info(f"📍 Estás em: **{atracao_atual}** ({zona_atual})")
-        with col2:
-            st.metric("Outras atrações abertas", len(df_display))
         
         st.divider()
         
